@@ -573,3 +573,31 @@ The <i>nRF5 SDK for Thread and Zigbee</i> includes:
 - software modules inherited from the nRF5 SDK e.g. peripheral drivers, NFC libraries, Bluetooth Low Energy libraries etc.
 
 [nrf5-sdk-thread-zigbee]: https://www.nordicsemi.com/Software-and-Tools/Software/nRF5-SDK-for-Thread-and-Zigbee
+
+# Support for the Fanstel BT840X, BT840XE and USB840X
+
+Thanks to Stuart Longland (aka Redhatter, VK4MSL) for figuring this out:
+
+The Fanstel [BT840X][BT840X] and [BT840XE][BT840XE] are FCC-approved modules
+built around the nRF52840 SoC and the [SKY66112 PA/LNA front-end][SKY66112].
+
+To build OpenThread for these devices:
+
+1. Clone this repo using: git clone https://github.com/farmjenny/openthread
+2. Enter the directory using: cd openthread
+3. Bootstrap the build environment using: ./script/bootstrap
+4. Bootstrap something else using: ./bootstrap
+5. Include the non-standard `BOARD=bt840x` in the call to `make`, e.g. for a border-router capable RCP:
+  ```
+  make -f examples/Makefile-nrf52840 BOARD=bt840x NCP_SPI=1 clean all
+  ```
+6. Convert the ELF binary produced by the OpenThread build system to Intel Hex format:
+  ```
+  arm-none-eabi-objcopy -O ihex output/nrf52840/bin/ot-rcp ot-rcp.hex
+  ```
+7. Chip erase and program the .hex file to the DK (I copied file ot-rcp.hex to Windows and programmed
+the board using nRF Connect programmer, but there are lots of other valid ways) 
+
+[BT840X]: https://www.fanstel.com/bt840f-nrf52840-ble-5-module-secure-iot-802154-thread-zigbee-1
+[BT840XE]: https://www.fanstel.com/bt840x-nrf52840-module-with-pa
+[SKY66112]: https://www.skyworksinc.com/products/front-end-modules/sky66112-11

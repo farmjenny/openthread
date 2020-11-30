@@ -79,6 +79,13 @@
 _Pragma("diag_suppress=Pe167")
 #endif
 
+/* For nRF5 platforms other than nRF52840 */
+#if !OPENTHREAD_CONFIG_NRF5_FEM
+#ifndef OPENTHREAD_CONFIG_NRF5_FEM_PA_GAIN
+#define OPENTHREAD_CONFIG_NRF5_FEM_PA_GAIN 0
+#endif
+#endif
+
 enum
 {
     NRF528XX_RECEIVE_SENSITIVITY  = -100, // dBm
@@ -109,6 +116,49 @@ static uint32_t sEnergyDetectionTime;
 static uint8_t  sEnergyDetectionChannel;
 static int8_t   sEnergyDetected;
 
+#if OPENTHREAD_CONFIG_NRF5_FEM
+#include <nrf_fem_control_config.h>
+
+#if OPENTHREAD_CONFIG_NRF5_WITH_SKY66112
+#include <nrf_gpio.h>
+#endif // OPENTHREAD_CONFIG_NRF5_WITH_SKY66112
+
+static const nrf_fem_interface_config_t sFemInterfaceConfig =
+{
+    .fem_config =
+    {
+        .pa_time_gap_us  = OPENTHREAD_CONFIG_NRF5_FEM_PA_TIME_IN_ADVANCE_US,
+        .lna_time_gap_us = OPENTHREAD_CONFIG_NRF5_FEM_LNA_TIME_IN_ADVANCE_US,
+        .pdn_settle_us   = OPENTHREAD_CONFIG_NRF5_FEM_PDN_SETTLE_US,
+        .trx_hold_us     = OPENTHREAD_CONFIG_NRF5_FEM_TRX_HOLD_US,
+    },
+    .pa_pin_config =
+    {
+        .enable       = OPENTHREAD_CONFIG_NRF5_FEM_CONTROL_PA_ENABLE,
+        .active_high  = OPENTHREAD_CONFIG_NRF5_FEM_CONTROL_PA_ACTIVE_HIGH,
+        .gpio_pin     = OPENTHREAD_CONFIG_NRF5_FEM_CONTROL_PA_PIN,
+        .gpiote_ch_id = OPENTHREAD_CONFIG_NRF5_FEM_CONTROL_PA_GPIOTE_CHANNEL
+    },
+    .lna_pin_config =
+    {
+        .enable       = OPENTHREAD_CONFIG_NRF5_FEM_CONTROL_LNA_ENABLE,
+        .active_high  = OPENTHREAD_CONFIG_NRF5_FEM_CONTROL_LNA_ACTIVE_HIGH,
+        .gpio_pin     = OPENTHREAD_CONFIG_NRF5_FEM_CONTROL_LNA_PIN,
+        .gpiote_ch_id = OPENTHREAD_CONFIG_NRF5_FEM_CONTROL_LNA_GPIOTE_CHANNEL
+    },
+    .pdn_pin_config =
+    {
+        .enable       = OPENTHREAD_CONFIG_NRF5_FEM_CONTROL_PDN_ENABLE,
+        .active_high  = OPENTHREAD_CONFIG_NRF5_FEM_CONTROL_PDN_ACTIVE_HIGH,
+        .gpio_pin     = OPENTHREAD_CONFIG_NRF5_FEM_CONTROL_PDN_PIN,
+        .gpiote_ch_id = OPENTHREAD_CONFIG_NRF5_FEM_CONTROL_PDN_GPIOTE_CHANNEL
+    },
+    .ppi_ch_id_set = OPENTHREAD_CONFIG_NRF5_FEM_SET_PPI_CHANNEL,
+    .ppi_ch_id_clr = OPENTHREAD_CONFIG_NRF5_FEM_CLR_PPI_CHANNEL,
+    .ppi_ch_id_pdn = OPENTHREAD_CONFIG_NRF5_FEM_PDN_PPI_CHANNEL
+};
+#endif // OPENTHREAD_CONFIG_NRF5_FEM
+
 typedef enum
 {
     kPendingEventSleep,                // Requested to enter Sleep state.
@@ -133,9 +183,38 @@ static uint32_t        sAckFrameCounter;
 static uint8_t         sAckKeyId;
 #endif
 
+#if OPENTHREAD_CONFIG_NRF5_FEM
+#if OPENTHREAD_CONFIG_NRF5_WITH_SKY66112
+bool nrf5RadioGetChl(void)
+{
+    return (nrf_gpio_pin_out_read(OPENTHREAD_CONFIG_NRF5_SKY66112_CHL_PIN) != 0);
+}
+
+void nrf5RadioSetChl(bool aState)
+{
+    if (aState)
+    {
+        nrf_gpio_pin_set(OPENTHREAD_CONFIG_NRF5_SKY66112_CHL_PIN);
+    }
+    else
+    {
+        nrf_gpio_pin_clear(OPENTHREAD_CONFIG_NRF5_SKY66112_CHL_PIN);
+    }
+}
+
+/* Configure and initialise the CHL pin on the SKY66112 PA/LNA */
+static void nrf5RadioInitChl(void)
+{
+    nrf_gpio_cfg_output(OPENTHREAD_CONFIG_NRF5_SKY66112_CHL_PIN);
+    nrf5RadioSetChl(OPENTHREAD_CONFIG_NRF5_SKY66112_CHL_DEFAULT_STATE);
+}
+#endif // OPENTHREAD_CONFIG_NRF5_WITH_SKY66112
+#endif // OPENTHREAD_CONFIG_NRF5_FEM
+
 static void dataInit(void)
 {
     sDisabled = true;
+    sDefaultTxPower = OPENTHREAD_CONFIG_DEFAULT_TRANSMIT_POWER;
 
     sTransmitFrame.mPsdu = sTransmitPsdu + 1;
 #if OPENTHREAD_CONFIG_MAC_HEADER_IE_SUPPORT
@@ -310,6 +389,12 @@ void otPlatRadioSetShortAddress(otInstance *aInstance, uint16_t aShortAddress)
 void nrf5RadioInit(void)
 {
     dataInit();
+#if OPENTHREAD_CONFIG_NRF5_FEM
+#if OPENTHREAD_CONFIG_NRF5_WITH_SKY66112
+    nrf5RadioInitChl();
+#endif
+    nrf_fem_interface_configuration_set(&sFemInterfaceConfig);
+#endif
     nrf_802154_init();
 }
 
@@ -433,7 +518,7 @@ otError otPlatRadioReceive(otInstance *aInstance, uint8_t aChannel)
     bool result;
 
     nrf_802154_channel_set(aChannel);
-    nrf_802154_tx_power_set(sDefaultTxPower);
+    nrf_802154_tx_power_set(sDefaultTxPower - OPENTHREAD_CONFIG_NRF5_FEM_PA_GAIN);
     result = nrf_802154_receive();
     clearPendingEvents();
 
@@ -647,7 +732,7 @@ otError otPlatRadioGetTransmitPower(otInstance *aInstance, int8_t *aPower)
     }
     else
     {
-        *aPower = nrf_802154_tx_power_get();
+        *aPower = nrf_802154_tx_power_get() + OPENTHREAD_CONFIG_NRF5_FEM_PA_GAIN;
     }
 
     return error;
@@ -658,7 +743,7 @@ otError otPlatRadioSetTransmitPower(otInstance *aInstance, int8_t aPower)
     OT_UNUSED_VARIABLE(aInstance);
 
     sDefaultTxPower = aPower;
-    nrf_802154_tx_power_set(aPower);
+    nrf_802154_tx_power_set(aPower - OPENTHREAD_CONFIG_NRF5_FEM_PA_GAIN);
 
     return OT_ERROR_NONE;
 }
