@@ -197,8 +197,16 @@ CCASFLAGS                       += \
 
 ifeq ($(BOARD),bt840x)
 # Fanstel BT840X(E) dongle
+# must move UART off of pin 6 which is used by the FEM
 UART_PIN_RX ?= 22
 UART_PIN_TX ?= 24
+# assign SPI pins based on board design (if used)
+SPIS_PIN_MOSI ?= 3
+SPIS_PIN_MISO ?= 2
+SPIS_PIN_SCK ?= 26
+SPIS_PIN_CSN ?= 27
+SPIS_PIN_HOST_IRQ ?= 13
+# Front-end Module Configuration (per Fanstel datasheet)
 FEM ?= 1
 SKY66112 ?= 1
 CONTROL_PA_PIN ?= 17    # aka CTX
@@ -209,6 +217,7 @@ CONTROL_PDN_PIN ?= 6    # aka CPS
 CONTROL_PDN_ACTIVE_HIGH ?= 0
 endif
 
+# Move UART pins, if necessary
 ifneq ($(UART_PIN_RX),)
 CPPFLAGS                                                                               += \
     -DUART_PIN_RX=$(UART_PIN_RX)                                                          \
@@ -229,6 +238,33 @@ CPPFLAGS                                                                        
     -DUART_PIN_CTS=$(UART_PIN_CTS)                                                        \
     $(NULL)
 endif
+# Move SPI pins, if necessary
+ifneq ($(SPIS_PIN_MOSI),)
+CPPFLAGS                                                                               += \
+    -DSPIS_PIN_MOSI=$(SPIS_PIN_MOSI)                                                          \
+    $(NULL)
+endif
+ifneq ($(SPIS_PIN_MISO),)
+CPPFLAGS                                                                               += \
+    -DSPIS_PIN_MISO=$(SPIS_PIN_MISO)                                                          \
+    $(NULL)
+endif
+ifneq ($(SPIS_PIN_SCK),)
+CPPFLAGS                                                                               += \
+    -DSPIS_PIN_SCK=$(SPIS_PIN_SCK)                                                          \
+    $(NULL)
+endif
+ifneq ($(SPIS_PIN_CSN),)
+CPPFLAGS                                                                               += \
+    -DSPIS_PIN_CSN=$(SPIS_PIN_CSN)                                                          \
+    $(NULL)
+endif
+ifneq ($(SPIS_PIN_HOST_IRQ),)
+CPPFLAGS                                                                               += \
+    -DSPIS_PIN_HOST_IRQ=$(SPIS_PIN_HOST_IRQ)                                                          \
+    $(NULL)
+endif
+# enable FEM
 ifneq ($(FEM),)
 CPPFLAGS                                                                               += \
     -DENABLE_FEM=$(FEM)                                                                    \
