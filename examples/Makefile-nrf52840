@@ -196,7 +196,7 @@ CCASFLAGS                       += \
     $(NULL)
 
 ifeq ($(BOARD),bt840x)
-# Fanstel BT840X(E) dongle
+# Fanstel BT840X(E) module with PA/LNA
 # must move UART off of pin 6 which is used by the FEM
 UART_PIN_RX ?= 22
 UART_PIN_TX ?= 24
@@ -372,8 +372,8 @@ CPPFLAGS                                                                        
     $(NULL)
 endif
 ifneq ($(SKY66112),)
-# Skyworks SKY66112 is about +14dB (8dBm in produces 22dBm out)
-FEM_PA_GAIN ?= 14
+# Defeated. Use power setting to set/read output from the radio itself
+FEM_PA_GAIN ?= 0
 
 CPPFLAGS                                                                               += \
     -DOPENTHREAD_CONFIG_NRF5_WITH_SKY66112=$(SKY66112)                                    \
