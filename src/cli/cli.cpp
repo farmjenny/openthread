@@ -3854,9 +3854,9 @@ void Interpreter::HandleSntpResponse(uint64_t aTime, otError aResult)
     if (aResult == OT_ERROR_NONE)
     {
         // Some Embedded C libraries do not support printing of 64-bit unsigned integers.
-        // To simplify, unix epoch time and era number are printed separately.
-        OutputLine("SNTP response - Unix time: %u (era: %u)", static_cast<uint32_t>(aTime),
-                   static_cast<uint32_t>(aTime >> 32));
+        // To simplify, unix epoch seconds (upper 32 bits) and milliseconds are printed separately.
+        // Fractional seconds (lower 32 bits) are converted to milliseconds by dividing by (2^32 -1) then multiplying by 1000
+        OutputLine( "SNTP response - Unix time in seconds.milliseconds: %u.%03u)", static_cast<uint32_t>(aTime >> 32), static_cast<uint32_t>(aTime) / 4294967 );
     }
     else
     {

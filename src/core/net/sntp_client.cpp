@@ -382,15 +382,23 @@ void Client::HandleUdpReceive(Message &aMessage, const Ip6::MessageInfo &aMessag
     // Due to NTP protocol limitation, this module stops working correctly after around year 2106, if
     // unix era is not updated. This seems to be a reasonable limitation for now. Era number cannot be
     // obtained using NTP protocol, and client of this module is responsible to set it properly.
-    unixTime = GetUnixEra() * (1ULL << 32);
+    //unixTime = GetUnixEra() * (1ULL << 32);
 
     if (responseHeader.GetTransmitTimestampSeconds() > kTimeAt1970)
     {
-        unixTime += static_cast<uint64_t>(responseHeader.GetTransmitTimestampSeconds()) - kTimeAt1970;
+        // subtract seconds since 1970 to correct for NTP vs Unix Epoch, save in the upper 32 bits (seconds)
+        unixTime += ( static_cast<uint64_t>(responseHeader.GetTransmitTimestampSeconds()) - kTimeAt1970 ) << 32;
+        // get the fractional portion and simply place it at the lower 32 bits
+        unixTime += static_cast<uint64_t>( responseHeader.GetTransmitTimestampFraction() );
+        
+
     }
     else
     {
-        unixTime += static_cast<uint64_t>(responseHeader.GetTransmitTimestampSeconds()) + (1ULL << 32) - kTimeAt1970;
+        // assume the 32 bit seconds timer has rolled over and treat it as such
+        unixTime += ( static_cast<uint64_t>(responseHeader.GetTransmitTimestampSeconds()) + (1ULL << 32) - kTimeAt1970 ) << 32;
+        // get the fractional portion and simply place it at the lower 32 bits
+        unixTime += static_cast<uint64_t>( responseHeader.GetTransmitTimestampFraction() );
     }
 
     // Return the time since 1970.
