@@ -134,12 +134,18 @@ otError Client::Query(const otSntpQuery *aQuery, otSntpResponseHandler aHandler,
     Message *               message     = nullptr;
     Message *               messageCopy = nullptr;
     Header                  header;
+    uint32_t                milliseconds;
     const Ip6::MessageInfo *messageInfo;
 
     VerifyOrExit(aQuery->mMessageInfo != nullptr, error = OT_ERROR_INVALID_ARGS);
 
-    // Originate timestamp is used only as a unique token.
-    header.SetTransmitTimestampSeconds(TimerMilli::GetNow().GetValue() / 1000 + kTimeAt1970);
+    // Originate timestamp seconds and milliseconds fraction.
+    // Get the local counter value, an arbitrary milliseconds since boot
+    milliseconds = TimerMilli::GetNow().GetValue();
+    // Set the seconds portion, noting that NTP timestamps use the 1/1/1900 epoch
+    header.SetTransmitTimestampSeconds(milliseconds / 1000 + kTimeAt1970);
+    // Fractional seconds is the milliseconds portion times ( (2^32 - 1) / 1000 )
+    header.SetTransmitTimestampFraction(milliseconds %1000 * 4294967);
 
     VerifyOrExit((message = NewMessage(header)) != nullptr, error = OT_ERROR_NO_BUFS);
 
