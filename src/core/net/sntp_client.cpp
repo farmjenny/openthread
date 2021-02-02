@@ -353,6 +353,12 @@ void Client::HandleUdpReceive(Message &aMessage, const Ip6::MessageInfo &aMessag
     QueryMetadata queryMetadata;
     Message *     message  = nullptr;
     uint64_t      unixTime = 0;
+    uint32_t      roundtripMs = 0;
+    uint32_t      processMs = 0;
+    uint32_t      propMs = 0;
+    uint32_t      correctionSec = 0;
+    uint32_t      correctionMs = 0;
+    uint32_t      transmitTimestampMs = 0;
 
     SuccessOrExit(aMessage.Read(aMessage.GetOffset(), responseHeader));
 
@@ -379,29 +385,56 @@ void Client::HandleUdpReceive(Message &aMessage, const Ip6::MessageInfo &aMessag
                  error = OT_ERROR_FAILED);
 
     // The NTP time starts at 1900 while the unix epoch starts at 1970.
-    // Due to NTP protocol limitation, this module stops working correctly after around year 2106, if
-    // unix era is not updated. This seems to be a reasonable limitation for now. Era number cannot be
-    // obtained using NTP protocol, and client of this module is responsible to set it properly.
-    //unixTime = GetUnixEra() * (1ULL << 32);
 
-    if (responseHeader.GetTransmitTimestampSeconds() > kTimeAt1970)
+    // Calculate the propogation time correction in milliseconds and seconds ...
+    // First, calculate the total round-trip time in mS, including propogation and processing
+    roundtripMs = ( TimerMilli::GetNow().GetValue() ) 
+                     - ( ( responseHeader.GetOriginateTimestampSeconds() - kTimeAt1970 ) * 1000 )
+                     - ( responseHeader.GetOriginateTimestampFraction() / 4294967 );
+    
+    // Second, calculate the processing time as TransmitTimestamp minus ReceiveTimestamp (from the server) both using NTP epoch
+    processMs = ( ( responseHeader.GetTransmitTimestampSeconds() * 1000 ) + ( responseHeader.GetTransmitTimestampFraction() / 4294967 ) ) 
+              - ( ( responseHeader.GetReceiveTimestampSeconds() * 1000 ) + ( responseHeader.GetReceiveTimestampFraction() / 4294967) );
+    
+    // Estimate server to client return propogation, assuming a symmetric link
+    propMs = ( roundtripMs - processMs ) / 2;   
+    
+    // if propogation delay is more than a second, don't trust the result
+    VerifyOrExit(propMs < 1000, error = OT_ERROR_FAILED);
+
+    correctionSec = propMs / 1000;
+    correctionMs = propMs % 1000;
+
+    transmitTimestampMs = responseHeader.GetTransmitTimestampFraction() / 4294967;
+
+    if ( (transmitTimestampMs + correctionMs) >= 1000 )
     {
-        // subtract seconds since 1970 to correct for NTP vs Unix Epoch, save in the upper 32 bits (seconds)
-        unixTime += ( static_cast<uint64_t>(responseHeader.GetTransmitTimestampSeconds()) - kTimeAt1970 ) << 32;
-        // get the fractional portion and simply place it at the lower 32 bits
-        unixTime += static_cast<uint64_t>( responseHeader.GetTransmitTimestampFraction() );
+        // increment seconds and handle the millisecond rollover
+        correctionSec++;
+        transmitTimestampMs = transmitTimestampMs + correctionMs - 1000;
+    }
+    else
+    {
+        transmitTimestampMs = transmitTimestampMs + correctionMs;
+    }
+    
+    if (responseHeader.GetTransmitTimestampSeconds() > kTimeAt1970)
+    {    
+        // subtract seconds since 1970 to correct for NTP vs Unix Epoch, compensate propogation, save in the upper 32 bits (seconds)
+        unixTime += ( static_cast<uint64_t>(responseHeader.GetTransmitTimestampSeconds()) - kTimeAt1970 + correctionSec ) << 32;
+        // fractional portion is alredy compensated -- simply place it at the lower 32 bits
+        unixTime += static_cast<uint64_t>( transmitTimestampMs * 4294967 );
         
-
     }
     else
     {
         // assume the 32 bit seconds timer has rolled over and treat it as such
-        unixTime += ( static_cast<uint64_t>(responseHeader.GetTransmitTimestampSeconds()) + (1ULL << 32) - kTimeAt1970 ) << 32;
-        // get the fractional portion and simply place it at the lower 32 bits
-        unixTime += static_cast<uint64_t>( responseHeader.GetTransmitTimestampFraction() );
+        unixTime += ( static_cast<uint64_t>(responseHeader.GetTransmitTimestampSeconds()) + (1ULL << 32) - kTimeAt1970 + correctionSec ) << 32;
+        // fractional portion is alredy compensated -- simply place it at the lower 32 bits
+        unixTime += static_cast<uint64_t>( transmitTimestampMs * 4294967 );
     }
 
-    // Return the time since 1970.
+    // Return the time since 1970 in a classic 64-bit unix timestamp.
     FinalizeSntpTransaction(*message, queryMetadata, unixTime, OT_ERROR_NONE);
 
 exit:
